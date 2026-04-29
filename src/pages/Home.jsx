@@ -5,6 +5,9 @@ import AddWeight from '../components/AddWeight'
 import AddMeal from '../components/AddMeal'
 import AddWorkout from '../components/AddWorkout'
 import FastingTimer from '../components/FastingTimer'
+import StreakBadge from '../components/StreakBadge'
+import WeightChart30 from '../components/WeightChart30'
+import { computeStreak } from '../lib/streak'
 
 export default function Home() {
   const profile = useStore(s => s.profile)
@@ -27,6 +30,7 @@ export default function Home() {
   const targetIntermediate = profile?.target_intermediate ?? null
   const targetFinal = profile?.target_final ?? profile?.target_weight ?? null
   const lost = Math.max(0, startWeight - currentWeight)
+  const streak = computeStreak({ weights, meals, workouts })
 
   const todayKcal = todayMeals.reduce((s, m) => s + (m.kcal || 0), 0)
   const todayProt = todayMeals.reduce((s, m) => s + (m.protein || 0), 0)
@@ -57,6 +61,9 @@ export default function Home() {
 
       {/* Fasting timer (16:8) */}
       <FastingTimer profile={profile} updateProfile={updateProfile} />
+
+      {/* Streak counter */}
+      <StreakBadge streak={streak} />
 
       {/* Dual target progress card */}
       <Card className="mx-3 mt-3">
@@ -99,6 +106,14 @@ export default function Home() {
           <Stat label="Pesate tot" value={weights.length} progress={Math.min(100, weights.length * 2)} />
         </Card>
       </div>
+
+      {/* 30-day weight trend with target line */}
+      <WeightChart30
+        weights={weights}
+        target={targetIntermediate ?? targetFinal ?? null}
+        currentWeight={currentWeight}
+        startWeight={startWeight}
+      />
 
       {/* Macros breakdown */}
       <Card className="mx-3 mt-3">
