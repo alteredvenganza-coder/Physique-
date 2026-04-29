@@ -22,6 +22,64 @@ export async function chat({ messages, system }) {
   return j.text || ''
 }
 
+// Streaming chat: edge function forwards the Anthropic SSE stream.
+// Calls onToken(delta, full) for every text chunk and resolves with the
+// concatenated final text.
+export async function chatStream({ messages, system, onToken, signal }) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Non sei loggato')
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coach`
+  const res = await fetch(url, {
+    method: 'POST',
+    signal,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ action: 'chat', messages, system, stream: true }),
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(`AI error ${res.status}: ${t.slice(0, 200)}`)
+  }
+  if (!res.body) throw new Error('Nessuno stream ricevuto')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let full = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    // SSE events are separated by blank lines. Process complete events only.
+    let nl
+    while ((nl = buffer.indexOf('\n\n')) >= 0) {
+      const event = buffer.slice(0, nl)
+      buffer = buffer.slice(nl + 2)
+      const dataLine = event.split('\n').find(l => l.startsWith('data: '))
+      if (!dataLine) continue
+      const data = dataLine.slice(6).trim()
+      if (!data || data === '[DONE]') continue
+      try {
+        const obj = JSON.parse(data)
+        if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
+          const t = obj.delta.text || ''
+          if (t) {
+            full += t
+            onToken?.(t, full)
+          }
+        } else if (obj.type === 'message_stop') {
+          // graceful end
+        }
+      } catch { /* skip malformed event */ }
+    }
+  }
+  return full
+}
+
 export async function analyzeMealImage({ image_base64, prompt }) {
   const j = await callCoachFn({ action: 'analyze-meal', image_base64, prompt })
   return parseJson(j.text || '')
