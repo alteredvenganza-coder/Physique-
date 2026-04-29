@@ -5,6 +5,7 @@ import { Card, IconButton, toast } from '../components/ui'
 import ChatBubble from '../components/ChatBubble'
 import { chatStream as aiChatStream, analyzeMealImage, fileToBase64 } from '../lib/ai'
 import { buildCoachSystemPrompt, ANALYZE_MEAL_PROMPT } from '../lib/prompts'
+import { computeStreak } from '../lib/streak'
 
 const FASTING_STORAGE_KEY = 'physique:fasting'
 
@@ -62,6 +63,7 @@ export default function Coach() {
         profile, weights, meals, workouts, routines,
         todayKcal, todayProtein, weekWorkouts,
         fastingState: readFastingState(),
+        streak: computeStreak({ weights, meals, workouts }),
       })
       // Send a deeper rolling window for memory across turns.
       const history = [...chatMsgs.slice(-40), { role: 'user', content: text }]
