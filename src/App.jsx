@@ -6,6 +6,7 @@ import Splash from './pages/Splash'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Coach from './pages/Coach'
+import Workout from './pages/Workout'
 import Log from './pages/Log'
 import You from './pages/You'
 
@@ -84,19 +85,21 @@ export default function App() {
   if (!session) return (<><Login /><ToastHost /></>)
 
   const tabs = [
-    { id: 'home',  label: 'Home' },
-    { id: 'coach', label: 'Coach' },
-    { id: 'log',   label: 'Log' },
-    { id: 'you',   label: 'Tu' },
+    { id: 'home',    label: 'Home' },
+    { id: 'coach',   label: 'Coach' },
+    { id: 'workout', label: 'Work' },
+    { id: 'log',     label: 'Log' },
+    { id: 'you',     label: 'Tu' },
   ]
 
   return (
     <>
       <main className="pb-[120px]">
-        {tab === 'home'  && <Home />}
-        {tab === 'coach' && <Coach />}
-        {tab === 'log'   && <Log />}
-        {tab === 'you'   && <You />}
+        {tab === 'home'    && <Home />}
+        {tab === 'coach'   && <Coach />}
+        {tab === 'workout' && <Workout />}
+        {tab === 'log'     && <Log />}
+        {tab === 'you'     && <You />}
       </main>
       <NavBar active={tab} onChange={setTab} tabs={tabs} />
       <ToastHost />
