@@ -22,13 +22,85 @@ export async function chat({ messages, system }) {
   return j.text || ''
 }
 
-// Streaming chat: edge function forwards the Anthropic SSE stream.
-// Calls onToken(delta, full) for every text chunk and resolves with the
-// concatenated final text.
+// Streaming chat without tools. Calls onToken(delta, full) per text chunk.
 export async function chatStream({ messages, system, onToken, signal }) {
+  const turn = await streamOneTurn({ messages, system, onToken, signal })
+  return turn.text
+}
+
+// Streaming chat WITH tool use. Handles the multi-turn loop: streams the
+// assistant turn, executes any tool_use blocks via executeTool() and
+// loops with tool_result messages appended until the model stops.
+//
+// Callbacks:
+//   - onToken(delta, currentTurnFull): fired for the CURRENT turn only;
+//     resets between turns so the streaming bubble shows only what the
+//     coach is saying in the latest turn.
+//   - onTurnStart(): each new assistant turn begins.
+//   - onToolUse({name, input, result}): a tool was executed.
+//
+// Returns the final assistant text.
+export async function chatStreamWithTools({
+  messages, system, tools, signal,
+  executeTool, onToken, onTurnStart, onToolUse,
+}) {
+  let working = [...messages]
+  let lastText = ''
+
+  // Cap loops defensively in case the model keeps calling tools.
+  for (let i = 0; i < 6; i++) {
+    onTurnStart?.()
+    const turn = await streamOneTurn({
+      messages: working,
+      system,
+      tools,
+      signal,
+      onToken,
+    })
+    lastText = turn.text
+
+    if (turn.stopReason !== 'tool_use' || turn.toolUses.length === 0) {
+      return lastText
+    }
+
+    // Append the assistant turn (text + tool_use blocks) to the conversation.
+    const assistantContent = []
+    if (turn.text) assistantContent.push({ type: 'text', text: turn.text })
+    for (const tu of turn.toolUses) {
+      assistantContent.push({
+        type: 'tool_use',
+        id: tu.id,
+        name: tu.name,
+        input: tu.input || {},
+      })
+    }
+    working.push({ role: 'assistant', content: assistantContent })
+
+    // Execute each tool sequentially, build tool_result message.
+    const results = []
+    for (const tu of turn.toolUses) {
+      const result = await executeTool({ name: tu.name, input: tu.input || {} })
+      onToolUse?.({ name: tu.name, input: tu.input, result })
+      results.push({
+        type: 'tool_result',
+        tool_use_id: tu.id,
+        content: typeof result === 'string' ? result : JSON.stringify(result),
+      })
+    }
+    working.push({ role: 'user', content: results })
+  }
+  return lastText
+}
+
+// Internal: stream one model turn, return { text, toolUses, stopReason }.
+async function streamOneTurn({ messages, system, tools, signal, onToken }) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Non sei loggato')
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coach`
+
+  const body = { action: 'chat', messages, system, stream: true }
+  if (tools && tools.length) body.tools = tools
+
   const res = await fetch(url, {
     method: 'POST',
     signal,
@@ -36,7 +108,7 @@ export async function chatStream({ messages, system, onToken, signal }) {
       Authorization: `Bearer ${session.access_token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ action: 'chat', messages, system, stream: true }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     const t = await res.text().catch(() => '')
@@ -47,14 +119,16 @@ export async function chatStream({ messages, system, onToken, signal }) {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let full = ''
+  let text = ''
+  let stopReason = null
+  // Index of currently open content block, keyed by block index from SSE.
+  const blocks = new Map() // index -> { type, name?, id?, jsonBuf? }
 
   while (true) {
     const { value, done } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
 
-    // SSE events are separated by blank lines. Process complete events only.
     let nl
     while ((nl = buffer.indexOf('\n\n')) >= 0) {
       const event = buffer.slice(0, nl)
@@ -63,21 +137,47 @@ export async function chatStream({ messages, system, onToken, signal }) {
       if (!dataLine) continue
       const data = dataLine.slice(6).trim()
       if (!data || data === '[DONE]') continue
-      try {
-        const obj = JSON.parse(data)
-        if (obj.type === 'content_block_delta' && obj.delta?.type === 'text_delta') {
+      let obj
+      try { obj = JSON.parse(data) } catch { continue }
+
+      if (obj.type === 'content_block_start') {
+        const cb = obj.content_block || {}
+        blocks.set(obj.index, {
+          type: cb.type,
+          name: cb.name,
+          id: cb.id,
+          jsonBuf: cb.type === 'tool_use' ? '' : null,
+        })
+      } else if (obj.type === 'content_block_delta') {
+        const cur = blocks.get(obj.index)
+        if (!cur) continue
+        if (obj.delta?.type === 'text_delta') {
           const t = obj.delta.text || ''
           if (t) {
-            full += t
-            onToken?.(t, full)
+            text += t
+            onToken?.(t, text)
           }
-        } else if (obj.type === 'message_stop') {
-          // graceful end
+        } else if (obj.delta?.type === 'input_json_delta') {
+          cur.jsonBuf = (cur.jsonBuf || '') + (obj.delta.partial_json || '')
         }
-      } catch { /* skip malformed event */ }
+      } else if (obj.type === 'content_block_stop') {
+        // nothing to do; block completion is captured at message_delta time
+      } else if (obj.type === 'message_delta') {
+        if (obj.delta?.stop_reason) stopReason = obj.delta.stop_reason
+      }
     }
   }
-  return full
+
+  // Materialize tool_use blocks with parsed inputs.
+  const toolUses = []
+  for (const [, b] of blocks) {
+    if (b.type === 'tool_use') {
+      let input = {}
+      try { input = JSON.parse(b.jsonBuf || '{}') } catch { /* fall back to {} */ }
+      toolUses.push({ id: b.id, name: b.name, input })
+    }
+  }
+  return { text, toolUses, stopReason }
 }
 
 export async function analyzeMealImage({ image_base64, prompt }) {
