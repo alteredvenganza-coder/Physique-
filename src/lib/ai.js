@@ -19,20 +19,17 @@ async function callCoachFn(payload) {
 
 export async function chat({ messages, system }) {
   const j = await callCoachFn({ action: 'chat', messages, system })
-  const text = j.content?.map(c => c.text || '').join('') || ''
-  return text
+  return j.text || ''
 }
 
 export async function analyzeMealImage({ image_base64, prompt }) {
   const j = await callCoachFn({ action: 'analyze-meal', image_base64, prompt })
-  const text = j.content?.map(c => c.text || '').join('') || ''
-  return parseJson(text)
+  return parseJson(j.text || '')
 }
 
 export async function analyzeWorkoutText({ text, prompt }) {
   const j = await callCoachFn({ action: 'analyze-workout', text, prompt })
-  const out = j.content?.map(c => c.text || '').join('') || ''
-  return parseJson(out)
+  return parseJson(j.text || '')
 }
 
 function parseJson(s) {

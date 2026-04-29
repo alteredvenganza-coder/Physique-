@@ -5,10 +5,31 @@ import ChatBubble from '../components/ChatBubble'
 import { chat as aiChat, analyzeMealImage, fileToBase64 } from '../lib/ai'
 import { buildCoachSystemPrompt, ANALYZE_MEAL_PROMPT } from '../lib/prompts'
 
+const FASTING_STORAGE_KEY = 'physique:fasting'
+
+function readFastingState() {
+  try {
+    const raw = localStorage.getItem(FASTING_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.startedAt ? parsed : null
+  } catch { return null }
+}
+
+const QUICK_PROMPTS = [
+  { icon: '⚡', label: 'Come sto', text: 'Come sto andando ultimamente? Analizza il mio trend peso e i miei allenamenti.' },
+  { icon: '🥗', label: 'Cosa mangio', text: 'Cosa mi consigli per il prossimo pasto, dato quello che ho già mangiato oggi?' },
+  { icon: '🏋️', label: 'Salto?', text: 'Posso saltare l\'allenamento oggi? Valuta in base al carico degli ultimi 7 giorni.' },
+  { icon: '⚖️', label: 'Peso', text: 'Analizza il mio peso: trend ultime 2 settimane e se sono in linea col target intermedio.' },
+  { icon: '🎯', label: 'In linea?', text: 'Sono in linea con il target intermedio (90 kg entro 15 settembre)? Cosa devo cambiare?' },
+]
+
 export default function Coach() {
   const profile = useStore(s => s.profile)
   const weights = useStore(s => s.weights)
   const meals = useStore(s => s.meals)
+  const workouts = useStore(s => s.workouts)
+  const routines = useStore(s => s.routines)
   const todayKcal = useStore(s => s.todayMeals().reduce((sum, m) => sum + (m.kcal || 0), 0))
   const todayProtein = useStore(s => s.todayMeals().reduce((sum, m) => sum + (m.protein || 0), 0))
   const weekWorkouts = useStore(s => s.weekWorkouts())
@@ -35,8 +56,9 @@ export default function Coach() {
     try {
       await addChat({ role: 'user', content: text })
       const system = buildCoachSystemPrompt({
-        profile, weights, meals,
+        profile, weights, meals, workouts, routines,
         todayKcal, todayProtein, weekWorkouts,
+        fastingState: readFastingState(),
       })
       const history = [...chatMsgs.slice(-20), { role: 'user', content: text }]
         .map(m => ({ role: m.role, content: m.content }))
@@ -90,11 +112,17 @@ export default function Coach() {
         </h1>
       </header>
 
-      {/* Quick chips */}
-      <div className="grid grid-cols-3 gap-2 px-3 mb-3">
+      {/* Quick chips: foto + suggerimenti pre-scritti */}
+      <div className="grid grid-cols-3 gap-2 px-3 mb-2">
         <ChipAction icon="📷" label="Foto pasto" onClick={onPickPhoto} disabled={analyzing} />
-        <ChipAction icon="⚡" label="Come sto" onClick={() => send(null, 'Come sto andando ultimamente?')} />
-        <ChipAction icon="🥗" label="Cosa mangio" onClick={() => send(null, 'Cosa mi consigli per il prossimo pasto?')} />
+        {QUICK_PROMPTS.slice(0, 2).map(q => (
+          <ChipAction key={q.label} icon={q.icon} label={q.label} onClick={() => send(null, q.text)} disabled={busy} />
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-2 px-3 mb-3">
+        {QUICK_PROMPTS.slice(2).map(q => (
+          <ChipAction key={q.label} icon={q.icon} label={q.label} onClick={() => send(null, q.text)} disabled={busy} />
+        ))}
       </div>
       <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoChosen} />
 
