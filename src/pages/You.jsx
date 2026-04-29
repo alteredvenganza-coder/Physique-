@@ -77,10 +77,19 @@ export default function You() {
           <button onClick={() => setEditTargets(true)} className="label-caps underline">Modifica</button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <TargetCell label="Target peso" value={`${profile?.target_weight ?? '—'} kg`} />
+          <TargetCell
+            label="Target intermedio"
+            value={profile?.target_intermediate ? `${profile.target_intermediate} kg` : '—'}
+            sub={formatTargetDate(profile?.target_intermediate_date)}
+          />
+          <TargetCell
+            label="Target finale"
+            value={profile?.target_final ? `${profile.target_final} kg` : '—'}
+            sub={formatTargetDate(profile?.target_final_date)}
+          />
           <TargetCell label="Calorie / day" value={(profile?.calorie_target ?? '—').toLocaleString('it-IT')} />
           <TargetCell label="Proteine / day" value={`${profile?.protein_target ?? '—'} g`} />
-          <TargetCell label="Digiuno IF" value={`${profile?.fast_start || '--'} → ${profile?.fast_end || '--'}`} />
+          <TargetCell label="Digiuno IF" value={`${profile?.fast_duration_hours ?? 16}h`} sub="16:8 protocol" />
         </div>
       </Card>
 
@@ -99,13 +108,19 @@ export default function You() {
   )
 }
 
-function TargetCell({ label, value }) {
+function TargetCell({ label, value, sub }) {
   return (
     <div className="bg-white/55 rounded-xl px-3 py-2.5">
       <div className="label-caps">{label}</div>
       <div className="font-display font-extrabold text-[16px] tracking-[-0.02em] text-[var(--color-ink)] mt-0.5">{value}</div>
+      {sub && <div className="label-caps opacity-60 mt-0.5">{sub}</div>}
     </div>
   )
+}
+
+function formatTargetDate(d) {
+  if (!d) return null
+  return new Date(d).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function SettingRow({ label, value, onClick, tone }) {
@@ -120,22 +135,29 @@ function SettingRow({ label, value, onClick, tone }) {
 }
 
 function EditTargetsModal({ open, onClose, profile, updateProfile }) {
-  const [target, setTarget] = useState(profile?.target_weight ?? '')
+  const [tInter, setTInter] = useState(profile?.target_intermediate ?? '')
+  const [tInterDate, setTInterDate] = useState(profile?.target_intermediate_date ?? '')
+  const [tFinal, setTFinal] = useState(profile?.target_final ?? profile?.target_weight ?? '')
+  const [tFinalDate, setTFinalDate] = useState(profile?.target_final_date ?? '')
   const [kcal, setKcal] = useState(profile?.calorie_target ?? '')
   const [prot, setProt] = useState(profile?.protein_target ?? '')
-  const [fastStart, setFastStart] = useState(profile?.fast_start ?? '20:00')
-  const [fastEnd, setFastEnd] = useState(profile?.fast_end ?? '12:00')
+  const [fastHours, setFastHours] = useState(profile?.fast_duration_hours ?? 16)
   const [busy, setBusy] = useState(false)
 
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
     try {
+      const finalNum = parseFloat(tFinal) || null
       await updateProfile({
-        target_weight: parseFloat(target) || null,
+        target_intermediate: parseFloat(tInter) || null,
+        target_intermediate_date: tInterDate || null,
+        target_final: finalNum,
+        target_final_date: tFinalDate || null,
+        target_weight: finalNum, // back-compat
         calorie_target: parseInt(kcal) || null,
         protein_target: parseInt(prot) || null,
-        fast_start: fastStart, fast_end: fastEnd,
+        fast_duration_hours: parseInt(fastHours) || 16,
       })
       toast('Target aggiornati')
       onClose()
@@ -146,13 +168,21 @@ function EditTargetsModal({ open, onClose, profile, updateProfile }) {
   return (
     <Modal open={open} onClose={onClose} title="Target">
       <form onSubmit={submit} className="space-y-3">
-        <Input label="Peso obiettivo (kg)" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Target intermedio (kg)" inputMode="decimal" value={tInter} onChange={e => setTInter(e.target.value)} />
+          <Input label="Entro" type="date" value={tInterDate} onChange={e => setTInterDate(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Target finale (kg)" inputMode="decimal" value={tFinal} onChange={e => setTFinal(e.target.value)} />
+          <Input label="Entro" type="date" value={tFinalDate} onChange={e => setTFinalDate(e.target.value)} />
+        </div>
         <Input label="Calorie giornaliere" inputMode="numeric" value={kcal} onChange={e => setKcal(e.target.value)} />
         <Input label="Proteine giornaliere (g)" inputMode="numeric" value={prot} onChange={e => setProt(e.target.value)} />
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Digiuno start" value={fastStart} onChange={e => setFastStart(e.target.value)} placeholder="20:00" />
-          <Input label="Finestra end" value={fastEnd} onChange={e => setFastEnd(e.target.value)} placeholder="12:00" />
-        </div>
+        <Input
+          label="Durata digiuno (h, 12-20)"
+          inputMode="numeric" type="number" min={12} max={20}
+          value={fastHours} onChange={e => setFastHours(e.target.value)}
+        />
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" type="button" className="flex-1" onClick={onClose}>Annulla</Button>
           <Button type="submit" className="flex-1" disabled={busy}>{busy ? '…' : 'Salva'}</Button>

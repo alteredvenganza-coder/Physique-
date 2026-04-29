@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useStore } from '../store/data'
-import { Card, Stat, Ring, Pill, Bar, Button } from '../components/ui'
+import { Card, Stat, Pill, Bar, Button } from '../components/ui'
 import AddWeight from '../components/AddWeight'
 import AddMeal from '../components/AddMeal'
 import AddWorkout from '../components/AddWorkout'
+import FastingTimer from '../components/FastingTimer'
 
 export default function Home() {
   const profile = useStore(s => s.profile)
   const weights = useStore(s => s.weights)
   const meals = useStore(s => s.meals)
   const workouts = useStore(s => s.workouts)
+  const updateProfile = useStore(s => s.updateProfile)
   const currentWeight = useStore(s => s.currentWeight())
   const weekWorkouts = useStore(s => s.weekWorkouts())
 
@@ -22,11 +24,9 @@ export default function Home() {
   const [showWorkout, setShowWorkout] = useState(false)
 
   const startWeight = profile?.start_weight ?? currentWeight
-  const targetWeight = profile?.target_weight ?? currentWeight
-  const totalToLose = startWeight - targetWeight
+  const targetIntermediate = profile?.target_intermediate ?? null
+  const targetFinal = profile?.target_final ?? profile?.target_weight ?? null
   const lost = Math.max(0, startWeight - currentWeight)
-  const remaining = Math.max(0, currentWeight - targetWeight)
-  const progressPct = totalToLose > 0 ? Math.min(100, Math.max(0, (lost / totalToLose) * 100)) : 0
 
   const todayKcal = todayMeals.reduce((s, m) => s + (m.kcal || 0), 0)
   const todayProt = todayMeals.reduce((s, m) => s + (m.protein || 0), 0)
@@ -55,21 +55,32 @@ export default function Home() {
         </Pill>
       </header>
 
-      {/* Goal progress card */}
-      <Card className="mx-3">
-        <div className="flex items-center justify-between">
+      {/* Fasting timer (16:8) */}
+      <FastingTimer profile={profile} updateProfile={updateProfile} />
+
+      {/* Dual target progress card */}
+      <Card className="mx-3 mt-3">
+        <div className="flex items-center justify-between mb-3">
           <span className="label-caps">Goal Progress</span>
-          <span className="label-caps">{Math.round(progressPct)}%</span>
+          <span className="label-caps">start {startWeight} kg</span>
         </div>
-        <div className="flex items-center gap-4 mt-3">
-          <Ring percent={progressPct} size={64} />
-          <div className="flex-1 min-w-0">
-            <div className="label-caps">Mancano</div>
-            <div className="font-display font-extrabold text-[24px] text-[var(--color-ink)] leading-tight">
-              {remaining.toFixed(1)} kg
-            </div>
-            <div className="label-caps mt-1 truncate">target {targetWeight} kg</div>
-          </div>
+        <div className="space-y-3">
+          <TargetProgress
+            label="Target intermedio"
+            target={targetIntermediate}
+            targetDate={profile?.target_intermediate_date}
+            startWeight={startWeight}
+            currentWeight={currentWeight}
+            tone="sun"
+          />
+          <TargetProgress
+            label="Target finale"
+            target={targetFinal}
+            targetDate={profile?.target_final_date}
+            startWeight={startWeight}
+            currentWeight={currentWeight}
+            tone="lav"
+          />
         </div>
       </Card>
 
@@ -140,6 +151,42 @@ export default function Home() {
       <AddMeal open={showMeal} onClose={() => setShowMeal(false)} />
       <AddWorkout open={showWorkout} onClose={() => setShowWorkout(false)} />
     </>
+  )
+}
+
+function TargetProgress({ label, target, targetDate, startWeight, currentWeight, tone }) {
+  if (target == null || startWeight == null || currentWeight == null) {
+    return (
+      <div>
+        <div className="flex justify-between mb-1.5">
+          <span className="label-caps">{label}</span>
+          <span className="font-mono text-[10px] tracking-wider opacity-60">—</span>
+        </div>
+        <Bar value={0} max={1} tone={tone} />
+      </div>
+    )
+  }
+  const totalToLose = Math.max(0, startWeight - target)
+  const lost = Math.max(0, startWeight - currentWeight)
+  const pct = totalToLose > 0 ? Math.min(100, (lost / totalToLose) * 100) : (currentWeight <= target ? 100 : 0)
+  const remaining = Math.max(0, currentWeight - target)
+  const dateStr = targetDate
+    ? new Date(targetDate).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null
+  return (
+    <div>
+      <div className="flex justify-between items-baseline mb-1.5">
+        <span className="label-caps">{label}</span>
+        <span className="font-mono text-[10px] tracking-wider text-[var(--color-ink-2)]">
+          {Math.round(pct)}% · -{remaining.toFixed(1)} kg
+        </span>
+      </div>
+      <Bar value={pct} max={100} tone={tone} />
+      <div className="flex justify-between mt-1">
+        <span className="label-caps opacity-70">target {target} kg</span>
+        {dateStr && <span className="label-caps opacity-70">entro {dateStr}</span>}
+      </div>
+    </div>
   )
 }
 
