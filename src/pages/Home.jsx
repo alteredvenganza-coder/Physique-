@@ -51,7 +51,7 @@ export default function Home() {
           {currentWeight}<span className="text-[20px] font-medium opacity-50 ml-2">kg</span>
         </h1>
         <Pill className="mt-3" tone={lost > 0 ? 'sun' : 'good'}>
-          {lost > 0 ? '↓' : '→'} {lost.toFixed(1)} kg dal start
+          {lost > 0 ? '↓' : '→'} {lost.toFixed(1)} kg dal peso nemico
         </Pill>
       </header>
 
@@ -62,7 +62,7 @@ export default function Home() {
       <Card className="mx-3 mt-3">
         <div className="flex items-center justify-between mb-3">
           <span className="label-caps">Goal Progress</span>
-          <span className="label-caps">start {startWeight} kg</span>
+          <span className="label-caps">peso nemico {startWeight} kg</span>
         </div>
         <div className="space-y-3">
           <TargetProgress

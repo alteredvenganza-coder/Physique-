@@ -54,7 +54,7 @@ export default function You() {
             {profile?.name || 'Tu'}
           </div>
           <div className="label-caps mt-1">
-            Inizio · {profile?.start_date || '—'} · {profile?.start_weight} kg
+            Peso nemico · {profile?.start_date || '—'} · {profile?.start_weight} kg
           </div>
         </div>
       </div>
@@ -197,6 +197,7 @@ function EditProfileModal({ open, onClose, profile, updateProfile }) {
   const [height, setHeight] = useState(profile?.height_cm ?? '')
   const [age, setAge] = useState(profile?.age ?? '')
   const [start, setStart] = useState(profile?.start_weight ?? '')
+  const [startDate, setStartDate] = useState(profile?.start_date ?? '')
   const [busy, setBusy] = useState(false)
 
   const submit = async (e) => {
@@ -208,6 +209,7 @@ function EditProfileModal({ open, onClose, profile, updateProfile }) {
         height_cm: parseInt(height) || null,
         age: parseInt(age) || null,
         start_weight: parseFloat(start) || null,
+        start_date: startDate || null,
       })
       toast('Profilo salvato')
       onClose()
@@ -223,7 +225,10 @@ function EditProfileModal({ open, onClose, profile, updateProfile }) {
           <Input label="Altezza (cm)" inputMode="numeric" value={height} onChange={e => setHeight(e.target.value)} />
           <Input label="Età" inputMode="numeric" value={age} onChange={e => setAge(e.target.value)} />
         </div>
-        <Input label="Peso di partenza (kg)" inputMode="decimal" value={start} onChange={e => setStart(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Peso nemico (kg)" inputMode="decimal" value={start} onChange={e => setStart(e.target.value)} />
+          <Input label="Data peso nemico" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+        </div>
         <div className="flex gap-2 pt-2">
           <Button variant="ghost" type="button" className="flex-1" onClick={onClose}>Annulla</Button>
           <Button type="submit" className="flex-1" disabled={busy}>{busy ? '…' : 'Salva'}</Button>
