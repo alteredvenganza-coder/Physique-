@@ -298,6 +298,63 @@ export const ANALYZE_MEAL_PROMPT = `Identifica il pasto nella foto. Stima realis
 Rispondi SOLO con JSON valido senza backtick né markdown:
 {"name":"nome breve del pasto","kcal":numero,"protein":numero,"carbs":numero,"fat":numero,"note":"breve nota su porzioni"}`
 
+export function buildAnalyzeMealPhotoPrompt({ currentWeight, calorieTarget = 2200, proteinTarget = 190 } = {}) {
+  return `Sei un nutrizionista esperto. Analizza questa foto di un pasto e restituisci un'analisi nutrizionale dettagliata.
+
+CONTESTO UTENTE:
+- Peso: ${currentWeight ?? '?'} kg
+- Dieta: low-carb, high-protein, IF 16:8
+- Target proteine giornaliero: ${proteinTarget}g
+- Target calorie giornaliero: ${calorieTarget} kcal
+- Cotture tipiche: griglia, padella senza olio extra, vapore, lessatura
+- L'utente è italiano, riconosci anche piatti italiani tipici
+
+ISTRUZIONI:
+1. Identifica TUTTI gli ingredienti visibili nel piatto
+2. Stima la quantità in grammi (sii realista, considera la dimensione del piatto e prospettiva)
+3. Identifica il metodo di cottura probabile
+4. Calcola macro per ogni ingrediente usando valori nutrizionali standard italiani (CREA/INRAN)
+5. Somma totali finali
+6. Indica livello di confidenza nella stima (alta/media/bassa)
+7. Se ci sono incertezze importanti (olio nascosto, salse, modalità cottura ambigua), elenca max 3 domande chiave per precisione
+
+ATTENZIONE A:
+- Olio/burro nascosto nella cottura
+- Salse non visibili (panna, maionese, vinaigrette)
+- Differenze yogurt 0% vs intero
+- Differenze proteine vegetali vs animali nelle quantità
+- Sovrastima quando il pasto sembra grande in foto ma il piatto è piccolo
+
+Rispondi SOLO con JSON valido in questo formato esatto, senza testo prima o dopo, senza backtick:
+
+{
+  "ingredienti": [
+    {
+      "nome": "string",
+      "emoji": "string (1 emoji)",
+      "quantita_grammi": number,
+      "quantita_descrizione": "string (es. '~200g' o '3 uova')",
+      "metodo_cottura": "grigliato|bollito|crudo|fritto|al_forno|saltato_padella|al_vapore|altro",
+      "kcal": number,
+      "proteine": number,
+      "carbo": number,
+      "grassi": number,
+      "note": "string opzionale, breve"
+    }
+  ],
+  "totali": { "kcal": number, "proteine": number, "carbo": number, "grassi": number },
+  "valutazione": {
+    "confidenza": "alta|media|bassa",
+    "rapporto_macro": "string breve",
+    "compatibilita_dieta": "ottima|buona|accettabile|fuori_piano",
+    "perc_target_proteine": number,
+    "perc_target_calorie": number
+  },
+  "domande_per_precisione": ["string"],
+  "consigli": "string (1-2 frasi, italiano diretto, max 1 emoji)"
+}`
+}
+
 export const ANALYZE_WORKOUT_PROMPT = `Analizza la descrizione/post di workout dell'utente.
 Estrai esercizi con serie e ripetizioni. Categorizza ognuno in: Push, Pull, Gambe, Core, Cardio, Compound.
 Rispondi SOLO con JSON valido senza backtick né markdown:

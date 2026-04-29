@@ -5,8 +5,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
-const CHAT_MODEL   = 'claude-sonnet-4-6'
-const VISION_MODEL = 'claude-haiku-4-5-20251001'
+const CHAT_MODEL          = 'claude-sonnet-4-6'
+const VISION_MODEL        = 'claude-haiku-4-5-20251001'
+const VISION_DETAIL_MODEL = 'claude-sonnet-4-6'
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 const cors = {
@@ -135,6 +136,27 @@ Deno.serve(async (req) => {
       const res = await callAnthropic({
         model: VISION_MODEL,
         max_tokens: 600,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image_base64 } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      })
+      const j = await res.json()
+      return json({ text: extractText(j) })
+    }
+
+    if (action === 'analyze-meal-photo') {
+      const image_base64 = String(body.image_base64 || '')
+      const prompt       = String(body.prompt || '')
+      if (!image_base64) return json({ error: 'image_base64 required' }, 400)
+      if (!prompt)       return json({ error: 'prompt required' }, 400)
+
+      const res = await callAnthropic({
+        model: VISION_DETAIL_MODEL,
+        max_tokens: 2000,
         messages: [{
           role: 'user',
           content: [
