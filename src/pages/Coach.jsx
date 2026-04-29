@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { marked } from 'marked'
 import { useStore } from '../store/data'
 import { Card, IconButton, toast } from '../components/ui'
 import ChatBubble from '../components/ChatBubble'
-import { chat as aiChat, analyzeMealImage, fileToBase64 } from '../lib/ai'
+import { chatStream as aiChatStream, analyzeMealImage, fileToBase64 } from '../lib/ai'
 import { buildCoachSystemPrompt, ANALYZE_MEAL_PROMPT } from '../lib/prompts'
 
 const FASTING_STORAGE_KEY = 'physique:fasting'
@@ -40,12 +41,13 @@ export default function Coach() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+  const [streamingText, setStreamingText] = useState('')
   const endRef = useRef(null)
   const fileRef = useRef(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMsgs.length, busy, analyzing])
+  }, [chatMsgs.length, busy, analyzing, streamingText])
 
   const send = async (e, override) => {
     e?.preventDefault?.()
@@ -53,6 +55,7 @@ export default function Coach() {
     if (!text || busy) return
     if (!override) setInput('')
     setBusy(true)
+    setStreamingText('')
     try {
       await addChat({ role: 'user', content: text })
       const system = buildCoachSystemPrompt({
@@ -60,11 +63,18 @@ export default function Coach() {
         todayKcal, todayProtein, weekWorkouts,
         fastingState: readFastingState(),
       })
-      const history = [...chatMsgs.slice(-20), { role: 'user', content: text }]
+      // Send a deeper rolling window for memory across turns.
+      const history = [...chatMsgs.slice(-40), { role: 'user', content: text }]
         .map(m => ({ role: m.role, content: m.content }))
-      const reply = await aiChat({ messages: history, system })
-      await addChat({ role: 'assistant', content: reply || '…' })
+      const final = await aiChatStream({
+        messages: history,
+        system,
+        onToken: (_t, full) => setStreamingText(full),
+      })
+      setStreamingText('')
+      if (final) await addChat({ role: 'assistant', content: final })
     } catch (err) {
+      setStreamingText('')
       await addChat({
         role: 'assistant',
         content: `Errore di connessione al coach: ${err.message}. Verifica setup Supabase.`,
@@ -137,7 +147,8 @@ export default function Coach() {
           </Card>
         )}
         {chatMsgs.map(m => <ChatBubble key={m.id} msg={m} />)}
-        {(busy || analyzing) && <TypingBubble />}
+        {streamingText && <StreamingBubble text={streamingText} />}
+        {((busy && !streamingText) || analyzing) && <TypingBubble />}
         <div ref={endRef} />
       </div>
 
@@ -170,6 +181,21 @@ function ChipAction({ icon, label, onClick, disabled }) {
       </div>
       <span className="label-caps">{label}</span>
     </button>
+  )
+}
+
+function StreamingBubble({ text }) {
+  const html = useMemo(() => {
+    try { return marked.parse(String(text || '')) } catch { return null }
+  }, [text])
+  return (
+    <div className="flex flex-col items-start max-w-full">
+      <div className="max-w-[82%] px-4 py-2.5 text-[14px] leading-snug break-words bg-white/65 backdrop-blur text-[var(--color-ink)] rounded-3xl rounded-bl-md chat-md streaming">
+        {html
+          ? <div dangerouslySetInnerHTML={{ __html: html }} />
+          : <span className="whitespace-pre-wrap">{text}</span>}
+      </div>
+    </div>
   )
 }
 
