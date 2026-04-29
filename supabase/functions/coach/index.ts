@@ -96,13 +96,15 @@ Deno.serve(async (req) => {
       const messages = Array.isArray(body.messages) ? body.messages : []
       const system   = String(body.system || '')
       const wantStream = body.stream === true
+      const tools    = Array.isArray(body.tools) ? body.tools : null
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         model: CHAT_MODEL,
         max_tokens: 1500,
         system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         messages,
       }
+      if (tools && tools.length) payload.tools = tools
 
       if (wantStream) {
         const upstream = await streamAnthropic(payload)

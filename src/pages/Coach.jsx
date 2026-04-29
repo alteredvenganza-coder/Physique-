@@ -3,9 +3,10 @@ import { marked } from 'marked'
 import { useStore } from '../store/data'
 import { Card, IconButton, toast } from '../components/ui'
 import ChatBubble from '../components/ChatBubble'
-import { chatStream as aiChatStream, analyzeMealImage, fileToBase64 } from '../lib/ai'
+import { chatStreamWithTools, analyzeMealImage, fileToBase64 } from '../lib/ai'
 import { buildCoachSystemPrompt, ANALYZE_MEAL_PROMPT } from '../lib/prompts'
 import { computeStreak } from '../lib/streak'
+import { COACH_TOOLS, makeToolExecutor, toolActionLabel } from '../lib/coachTools'
 
 const FASTING_STORAGE_KEY = 'physique:fasting'
 
@@ -38,13 +39,23 @@ export default function Coach() {
   const chatMsgs = useStore(s => s.chat)
   const addChat = useStore(s => s.addChat)
   const addMeal = useStore(s => s.addMeal)
+  const addWeight = useStore(s => s.addWeight)
+  const addWorkout = useStore(s => s.addWorkout)
+  const addRoutine = useStore(s => s.addRoutine)
+  const updateProfile = useStore(s => s.updateProfile)
 
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [streamingText, setStreamingText] = useState('')
+  const [toolActions, setToolActions] = useState([]) // for the in-flight assistant turn
   const endRef = useRef(null)
   const fileRef = useRef(null)
+
+  const executeTool = useMemo(
+    () => makeToolExecutor({ addMeal, addWeight, addWorkout, addRoutine, updateProfile }),
+    [addMeal, addWeight, addWorkout, addRoutine, updateProfile]
+  )
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -57,6 +68,8 @@ export default function Coach() {
     if (!override) setInput('')
     setBusy(true)
     setStreamingText('')
+    setToolActions([])
+    const actionsThisTurn = []
     try {
       await addChat({ role: 'user', content: text })
       const system = buildCoachSystemPrompt({
@@ -65,18 +78,34 @@ export default function Coach() {
         fastingState: readFastingState(),
         streak: computeStreak({ weights, meals, workouts }),
       })
-      // Send a deeper rolling window for memory across turns.
       const history = [...chatMsgs.slice(-40), { role: 'user', content: text }]
         .map(m => ({ role: m.role, content: m.content }))
-      const final = await aiChatStream({
+
+      const final = await chatStreamWithTools({
         messages: history,
         system,
+        tools: COACH_TOOLS,
+        executeTool,
+        onTurnStart: () => setStreamingText(''),
         onToken: (_t, full) => setStreamingText(full),
+        onToolUse: ({ name, result }) => {
+          actionsThisTurn.push({ name, result })
+          setToolActions([...actionsThisTurn])
+        },
       })
+
+      // Persist the assistant's final text alongside a recap of executed
+      // actions so the chat history is faithful when reloaded.
+      const recap = actionsThisTurn.length
+        ? '\n\n---\n' + actionsThisTurn.map(a => `✓ ${a.result || toolActionLabel(a.name)}`).join('\n')
+        : ''
+      const finalToSave = (final || '').trim() + recap
       setStreamingText('')
-      if (final) await addChat({ role: 'assistant', content: final })
+      setToolActions([])
+      if (finalToSave) await addChat({ role: 'assistant', content: finalToSave })
     } catch (err) {
       setStreamingText('')
+      setToolActions([])
       await addChat({
         role: 'assistant',
         content: `Errore di connessione al coach: ${err.message}. Verifica setup Supabase.`,
@@ -149,8 +178,9 @@ export default function Coach() {
           </Card>
         )}
         {chatMsgs.map(m => <ChatBubble key={m.id} msg={m} />)}
+        {toolActions.map((a, i) => <ToolActionPill key={`act-${i}`} action={a} />)}
         {streamingText && <StreamingBubble text={streamingText} />}
-        {((busy && !streamingText) || analyzing) && <TypingBubble />}
+        {((busy && !streamingText && !toolActions.length) || analyzing) && <TypingBubble />}
         <div ref={endRef} />
       </div>
 
@@ -183,6 +213,17 @@ function ChipAction({ icon, label, onClick, disabled }) {
       </div>
       <span className="label-caps">{label}</span>
     </button>
+  )
+}
+
+function ToolActionPill({ action }) {
+  return (
+    <div className="flex justify-start">
+      <div className="inline-flex items-center gap-2 bg-emerald-100/70 text-emerald-900 px-3 py-1.5 rounded-full text-[11px] font-mono tracking-wider backdrop-blur">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+        {action.result || toolActionLabel(action.name)}
+      </div>
+    </div>
   )
 }
 

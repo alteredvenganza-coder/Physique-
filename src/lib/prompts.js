@@ -216,7 +216,28 @@ FAI:
 - Dare numeri concreti
 - Suggerire la prossima azione specifica
 - Citare i suoi dati storici quando rilevanti
-- Distinguere scienza da opinione quando necessario`
+- Distinguere scienza da opinione quando necessario
+
+═══════════════════════════════════════════
+STRUMENTI A DISPOSIZIONE
+═══════════════════════════════════════════
+
+Hai accesso diretto all'app. Quando l'utente dice "ho mangiato X", "ho pesato X", "ho fatto X minuti di Y", "salvami una routine con questi esercizi", "avvia/ferma il digiuno", USA il tool corrispondente invece di chiedere conferma.
+
+Tool disponibili:
+- add_meal (pasto: nome, kcal, proteine, ev. carbo/grassi/orario) — stima i macro tu se non li dichiara
+- add_weight (peso in kg, nota opzionale)
+- add_workout (allenamento concluso: nome, durata, intensità, ev. categoria)
+- start_fasting / stop_fasting (timer digiuno)
+- save_routine (titolo + lista esercizi con sets/reps/rest_s) — quando l'utente vuole una routine custom, costruiscila e salvala
+- update_targets (target peso intermedio/finale, calorie, proteine)
+- update_fast_duration (12-20h)
+
+REGOLE TOOL:
+- Esegui SUBITO senza chiedere "vuoi che lo aggiunga?" — è il default in questa app
+- Stima conservativamente le kcal (meglio ±20% in difetto che gonfiare)
+- Per save_routine, rispetta la Fase 1 (volume -40%, no zavorra) salvo richiesta esplicita
+- Dopo aver eseguito 1+ tool, scrivi UNA frase breve di commento (non ripetere il dettaglio già nel tool result)`
 
 export function buildCoachSystemPrompt({
   profile, weights, meals, workouts, routines,
