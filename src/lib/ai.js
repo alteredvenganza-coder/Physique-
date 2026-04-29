@@ -1,11 +1,12 @@
 import { supabase } from './supabase'
 
-async function callCoachFn(payload) {
+async function callCoachFn(payload, opts = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Non sei loggato')
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/coach`
   const r = await fetch(url, {
     method: 'POST',
+    signal: opts.signal,
     headers: {
       Authorization: `Bearer ${session.access_token}`,
       'content-type': 'application/json',
@@ -183,6 +184,22 @@ async function streamOneTurn({ messages, system, tools, signal, onToken }) {
 export async function analyzeMealImage({ image_base64, prompt }) {
   const j = await callCoachFn({ action: 'analyze-meal', image_base64, prompt })
   return parseJson(j.text || '')
+}
+
+// Rich photo analysis: returns the full ingredient breakdown JSON.
+// Times out at 30s defensively — vision can be slow on big images.
+export async function analyzeMealPhoto({ image_base64, prompt, signal }) {
+  const ctrl = signal ? null : new AbortController()
+  const timeoutId = ctrl ? setTimeout(() => ctrl.abort(), 30_000) : null
+  try {
+    const j = await callCoachFn(
+      { action: 'analyze-meal-photo', image_base64, prompt },
+      { signal: signal || ctrl?.signal },
+    )
+    return parseJson(j.text || '')
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
 }
 
 export async function analyzeWorkoutText({ text, prompt }) {
